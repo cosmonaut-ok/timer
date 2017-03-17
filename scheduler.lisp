@@ -36,20 +36,31 @@
                                     :adjustable t
                                     :fill-pointer 0))
 
-(defvar *control-stack-lock* (sb-thread:make-mutex))
-(defvar *control-stack-waitqueue* (sb-thread:make-waitqueue))
+(defvar *control-stack-lock*
+  #+sbcl(sb-thread:make-mutex :name "Anonymous lock")
+  #-sbcl(bt:make-lock :name "Anonymous lock")
+  )
+
+(defvar *control-stack-waitqueue*
+  #+sbcl(sb-thread:make-waitqueue :name "Anonymous condition variable")
+  #-sbcl(bt:make-condition-variable :name "Anonymous condition variable")
+  )
 
 
 (defmacro with-control-stack-lock (&body body)
-  `(sb-thread:with-mutex (*control-stack-lock*)
-     ,@body))
-
+  #+sbcl`(sb-thread:with-mutex (*control-stack-lock*)
+     ,@body)
+  #-sbcl`(bt:with-lock-held (*control-stack-lock*)
+     ,@body)
+  )
 
 (defun next-control-message ()
   (with-control-stack-lock
     (loop (if (zerop (length *control-stack*))
-              (sb-thread:condition-wait *control-stack-waitqueue*
-                                        *control-stack-lock*)
+              #+sbcl(sb-thread:condition-wait *control-stack-waitqueue*
+					      *control-stack-lock*)
+              #-sbcl(bt:condition-wait *control-stack-waitqueue*
+				       *control-stack-lock*)
               (return-from next-control-message
                 (vector-pop *control-stack*))))))
 
@@ -57,7 +68,9 @@
 (defun add-control-message (message)
   (with-control-stack-lock
     (vector-push-extend message *control-stack*))
-  (sb-thread:condition-notify *control-stack-waitqueue*))
+  #+sbcl(sb-thread:condition-notify *control-stack-waitqueue*)
+  #-sbcl(bt:condition-notify *control-stack-waitqueue*)
+  )
 
 
 ;;;
@@ -156,7 +169,8 @@
   (with-slots (function repeat-time)
       timer
     (if (%timer-thread timer)
-	(sb-thread:make-thread function)
+	#+sbcl(sb-thread:make-thread function)
+	#-sbcl(bt:make-thread function)
 	(funcall function))
     (when repeat-time
       (reschedule-timer timer))))
@@ -178,18 +192,28 @@
 ;;;
 
 (defvar *timers-enabled-p* nil)
-(defvar *timers-enabled-mutex* (sb-thread:make-mutex))
+(defvar *timers-enabled-mutex*
+  #+sbcl(sb-thread:make-mutex :name "Timers enabled lock")
+  #-sbcl(bt:make-lock :name "Timers enabled lock")
+  )
+
 
 (defun enable-timers ()
   (sb-thread:with-mutex (*timers-enabled-mutex*)
     (unless *timers-enabled-p*
       (setf *timers-enabled-p* t)
-      (sb-thread:make-thread #'(lambda ()
+      #+sbcl(sb-thread:make-thread #'(lambda ()
 				 (unwind-protect
 				      (scheduler)
 				   ;; XXX this doesn't seem to run if
 				   ;;  the thread is killed
 				   (setf *timers-enabled-p* nil))))
+      #-sbcl(bt:make-thread #'(lambda ()
+				       (unwind-protect
+					   (scheduler)
+					 ;; XXX this doesn't seem to run if
+					 ;;  the thread is killed
+					 (setf *timers-enabled-p* nil))))      
       (values))))
 
 
