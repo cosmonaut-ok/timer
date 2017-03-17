@@ -87,30 +87,6 @@
   (setf (%timer-expire-time timer) (+ (get-precise-time)
                                       (%timer-repeat-time timer)))
   (add-control-message (make-control-message :reschedule timer)))
-        
-
-;;;
-;;; Expiring timers
-;;;
-
-(defun expire-timer (timer)
-  (with-slots (function repeat-time)
-      timer
-    (if (%timer-thread timer)
-	(sb-thread:make-thread function)
-	(funcall function))
-    (when repeat-time
-      (reschedule-timer timer))))
-
-
-(defun expire-pending-timers ()
-  (loop
-   (let ((next-timer (peek-schedule)))
-     (unless next-timer
-       (return-from expire-pending-timers))
-     (if (> (get-precise-time) (%timer-expire-time next-timer))
-         (expire-timer (priority-queue-extract-maximum *schedule*))
-         (return-from expire-pending-timers)))))
        
           
    
@@ -170,6 +146,30 @@
            (let ((message (next-control-message)))
              (process-control-message message)))
        (sb-ext:timeout () nil)))))
+        
+
+;;;
+;;; Expiring timers
+;;;
+
+(defun expire-timer (timer)
+  (with-slots (function repeat-time)
+      timer
+    (if (%timer-thread timer)
+	(sb-thread:make-thread function)
+	(funcall function))
+    (when repeat-time
+      (reschedule-timer timer))))
+
+
+(defun expire-pending-timers ()
+  (loop
+   (let ((next-timer (peek-schedule)))
+     (unless next-timer
+       (return-from expire-pending-timers))
+     (if (> (get-precise-time) (%timer-expire-time next-timer))
+         (expire-timer (priority-queue-extract-maximum *schedule*))
+         (return-from expire-pending-timers)))))
        
 
 
