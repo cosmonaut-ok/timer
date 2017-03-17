@@ -12,6 +12,8 @@
 
 (defsystem #:timer
     :name "timer"
+    :author "Zach Beane <xach@xach.com>"
+    :maintainer "Alexander Vynnyk <cosmonaut.ok@zoho.com>"
     :version "0.4.1"
     :depends-on (#-sbcl :bordeaux-threads)
     :components ((:file "package")

@@ -38,7 +38,7 @@
 
 (defvar *control-stack-lock*
   #+sbcl(sb-thread:make-mutex :name "Anonymous lock")
-  #-sbcl(bt:make-lock :name "Anonymous lock")
+  #-sbcl(bt:make-lock "Anonymous lock")
   )
 
 (defvar *control-stack-waitqueue*
@@ -145,9 +145,14 @@
        (cond ((null ,d)
               ,@body)
              ((<= ,d (float (/ 1 internal-time-units-per-second))) ; XXX NOT 0
-              (error 'sb-ext:timeout))
-             (t (sb-ext:with-timeout ,d
-                  ,@body))))))
+              #+sbcl(error 'sb-ext:timeout)
+	      #-sbcl(error 'bt:timeout)
+	      )
+             (t #+sbcl(sb-ext:with-timeout ,d
+                  ,@body)
+		#-sbcl(bt:with-timeout ,d
+                  ,@body)
+		)))))
 
 
 (defun scheduler ()
@@ -158,7 +163,9 @@
          (with-optional-timeout delay
            (let ((message (next-control-message)))
              (process-control-message message)))
-       (sb-ext:timeout () nil)))))
+       #+sbcl(sb-ext:timeout () nil)
+       #-sbcl(bt:timeout () nil)
+))))
         
 
 ;;;
